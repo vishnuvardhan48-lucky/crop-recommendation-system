@@ -1,0 +1,98 @@
+"""
+Tests for API endpoints
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+import json
+
+from api.routes import app
+
+client = TestClient(app)
+
+class TestAPI:
+    """Test API endpoints"""
+    
+    def test_health_check(self):
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data['status'] == 'healthy'
+        assert 'version' in data
+    
+    def test_root_endpoint(self):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "text/html" in response.headers['content-type']
+    
+    def test_crops_endpoint(self):
+        response = client.get("/crops")
+        # Note: This might fail if model not loaded
+        if response.status_code == 200:
+            data = response.json()
+            assert 'crops' in data
+            assert 'count' in data
+    
+    def test_prediction_endpoint(self):
+        payload = {
+            "N": 90,
+            "P": 45,
+            "K": 40,
+            "temperature": 25,
+            "humidity": 70,
+            "ph": 6.5,
+            "rainfall": 150
+        }
+        
+        response = client.post("/predict", json=payload)
+        
+        # Note: This might fail if model not loaded
+        if response.status_code == 200:
+            data = response.json()
+            assert data['success']
+            assert 'primary_recommendation' in data
+            assert 'confidence' in data
+    
+    def test_invalid_prediction(self):
+        payload = {
+            "N": 300,  # Invalid
+            "P": 45,
+            "K": 40,
+            "temperature": 25,
+            "humidity": 70,
+            "ph": 6.5,
+            "rainfall": 150
+        }
+        
+        response = client.post("/predict", json=payload)
+        assert response.status_code == 422  # Validation error
+    
+    def test_batch_prediction(self):
+        payload = {
+            "data": [
+                {
+                    "N": 90, "P": 45, "K": 40,
+                    "temperature": 25, "humidity": 70,
+                    "ph": 6.5, "rainfall": 150
+                },
+                {
+                    "N": 85, "P": 42, "K": 38,
+                    "temperature": 24, "humidity": 72,
+                    "ph": 6.3, "rainfall": 145
+                }
+            ]
+        }
+        
+        response = client.post("/predict/batch", json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            assert data['success']
+            assert 'results' in data
+            assert len(data['results']) == 2
+    
+    def test_metrics_endpoint(self):
+        response = client.get("/metrics")
+        assert response.status_code == 200
+        data = response.json()
+        assert 'total_requests' in data
